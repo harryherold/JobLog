@@ -1,20 +1,128 @@
 #!/usr/bin/env python3
 from subprocess import Popen, PIPE, check_call
 from json import dump as json_dump
+from enum import Enum
 import sys, os, argparse
 import re
 import time
 from datetime import datetime, timedelta
 from collections import defaultdict
 from dateutil.tz import tzlocal
+import jobs
+from yapf.yapflib.yapf_api import FormatFile
+import enum
 
-JOB_FIELDS = ['JobId', 'JobName', 'StartTime', 'EndTime', 'SubmitTime', 'NumNodes', 'NumCPUs', 'NumTasks', 'Dependency', 'ExitCode']
-JOB_STEPS_FIELDS = ['JobID','NNodes','NTasks','NCPUS','Start','End','Elapsed','JobName','NodeList','ExitCode','State', 'Submit']
 ACTIVE_STATES = ['COMPLETING', 'PENDING', 'RUNNING', 'CONFIGURING', 'RESIZING']
 MAJOR_VERSION = 0
 MINOR_VERSION = 1
 DATE_INPUT_FORMAT = '%Y-%m-%dT%H:%M:%S'
 DATE_OUTPUT_FORMAT = '%Y-%m-%dT%H:%M:%S%z'
+
+class State(enum.Enum):
+    BOOT_FAIL = 1
+    CANCELLED = 2
+    COMPLETED = 3
+    CONFIGURING = 4
+    COMPLETING = 5
+    DEADLINE = 6
+    FAILED = 7
+    NODE_FAIL = 8
+    OUT_OF_MEMORY = 9
+    PENDING = 10
+    PREEMPTED = 11
+    RUNNING = 12
+    RESV_DEL_HOLD = 13
+    REQUEUE_FED = 14
+    REQUEUE_HOLD = 15
+    REQUEUED = 16
+    RESIZING = 17
+    REVOKED = 18
+    SIGNALING = 19
+    SPECIAL_EXIT = 20
+    STAGE_OUT = 21
+    STOPPED = 22
+    SUSPENDED = 23
+    TIMEOUT = 24
+
+class Job:
+    def __init__(self):
+        self.jobdesc = -1
+
+        FIELDS = ['JobId', 'JobName', 'StartTime', 'EndTime', 'SubmitTime', 'NumNodes', 'NumCPUs', 'NumTasks', 'ExitCode']
+        JOB_FIELDS = ['Dependency']
+
+        self.jobid = FIELDS[0]
+        self. jobname = FIELDS[1]
+        self.starttime = FIELDS[2]
+        self.endtime = FIELDS[3]
+        self.submittime = FIELDS[4]
+        self.numnodes = FIELDS[5]
+        self.numcpus = FIELDS[6]
+        self.numtasks = FIELDS[7]
+        self.exitcode = FIELDS[8]
+
+        self.dependency = JOB_FIELDS[0]
+
+
+    class Step:
+        def __init__(self):
+            JOB_STEPS_FIELDS = ['NodeList', State]
+
+            self.nodelist = JOB_STEPS_FIELDS[0]
+            self.state = JOB_STEPS_FIELDS[1]
+
+
+
+class Scheduler:
+
+    class Slurm:
+
+        def job_exists(self, jobid: int):
+            cmd = "scontrol show jobid {}".format(jobid)
+            with Popen(cmd, shell=True, stdout=PIPE) as proc:
+                proc.wait()
+                return proc.returncode == 0
+
+        def job_active(self, jobid: int) -> bool:
+            cmd = "sacct -j {} --format=State --nohead".format(jobid)
+            with Popen(cmd, shell=True, stdout=PIPE) as proc:
+                proc.wait()
+                state = proc.stdout.read().decode("utf-8").rstrip()
+                return state in ACTIVE_STATES
+
+
+        def steps_active(self, jobid: int) -> bool:
+            cmd = "sacct -j {} --format=JobID,State --nohead".format(jobid)
+            with Popen(cmd, shell=True, stdout=PIPE) as proc:
+                proc.wait()
+                all_steps = [step.decode("utf-8").rstrip() for step in proc.stdout if contains_step_id(step.decode("utf-8"))]
+                return any(map(lambda s: s.split()[1] in ACTIVE_STATES, all_steps))
+
+        def job_has_steps(self, jobid: int) -> bool:
+            cmd  = "sacct -j {} --format=JobID --nohead".format(jobid)
+            regex = r"[0-9]+\.[0-9]+"
+            with Popen(cmd, shell=True, stdout=PIPE) as proc:
+                proc.wait()
+                data = proc.stdout.read().decode("utf-8")
+                return re.search(regex, data) != None
+
+        def job_deps(self, jobid: int) -> str:
+            cmd = "scontrol show jobid -dd {}".format(jobid)
+            with Popen(cmd, shell=True, stdout=PIPE) as proc:
+                for line in proc.stdout:
+                    l = line.decode("utf-8").rstrip()
+                    fields = [opts.split('=') for opts in l.split(' ') if opts != '']
+                    for field in fields:
+                        if field[0] == 'Dependency':
+                            return field[1]
+
+
+
+
+
+
+
+
 
 def output_datetime(tout: str) -> datetime:
   idx = tout.rfind(':')
@@ -35,56 +143,21 @@ def convert_timestamp(timestamp: str) -> str:
   tmp_date = datetime.strptime(timestamp,DATE_INPUT_FORMAT).astimezone(tzlocal()).isoformat()
   return str(tmp_date)
 
-def job_exists(jobid: int):
-  cmd = "scontrol show jobid {}".format(jobid)
-  with Popen(cmd, shell=True,stdout=PIPE) as proc:
-    proc.wait()
-    return proc.returncode == 0
 
 def export_json(path: str, job_desc: dict) -> None:
   with open("{}/job_log.json".format(path),'w') as file:
     json_dump(job_desc, file)
 
-def job_has_steps(jobid: int) -> bool:
-  cmd  = "sacct -j {} --format=JobID --nohead".format(jobid)
-  regex = r"[0-9]+\.[0-9]+"
-  with Popen(cmd, shell=True, stdout=PIPE) as proc:
-    proc.wait()
-    data = proc.stdout.read().decode("utf-8")
-    return re.search(regex, data) != None
-
-def steps_active(jobid: int) -> bool:
-  cmd = "sacct -j {} --format=JobID,State --nohead".format(jobid)
-  with Popen(cmd, shell=True, stdout=PIPE) as proc:
-    proc.wait()
-    all_steps = [step.decode("utf-8").rstrip() for step in proc.stdout if contains_step_id(step.decode("utf-8"))]
-    return any(map(lambda s: s.split()[1] in ACTIVE_STATES, all_steps))
-
-def job_active(jobid: int) -> bool:
-  cmd = "sacct -j {} --format=State --nohead".format(jobid)
-  with Popen(cmd, shell=True, stdout=PIPE) as proc:
-    proc.wait()
-    state = proc.stdout.read().decode("utf-8").rstrip()
-    return state in ACTIVE_STATES
 
 def wait_on_slurm(jobid: int) -> None:
   wait_time = 0.1
   if job_has_steps(jobid):
-    while steps_active(jobid):
+    while Step.steps_active(jobid):
       time.sleep(wait_time)
   else:
-    while job_active(jobid):
+    while Job.job_active(jobid):
       time.sleep(wait_time)
 
-def job_deps(jobid: int) -> str:
-  cmd = "scontrol show jobid -dd {}".format(jobid)
-  with Popen(cmd, shell=True, stdout=PIPE) as proc:
-    for line in proc.stdout:
-      l = line.decode("utf-8").rstrip()
-      fields = [opts.split('=') for opts in l.split(' ') if opts != '']
-      for field in fields:
-        if field[0] == 'Dependency':
-          return field[1]
 
 def job_info(jobid: int) -> dict:
   job_info = dict()
@@ -151,4 +224,13 @@ if __name__ == "__main__":
     info.update({'Dependency': job_deps(args.jobid)})
 
   export_json(args.output, info)
+def job_deps(jobid: int) -> str:
+  cmd = "scontrol show jobid -dd {}".format(jobid)
+  with Popen(cmd, shell=True, stdout=PIPE) as proc:
+    for line in proc.stdout:
+      l = line.decode("utf-8").rstrip()
+      fields = [opts.split('=') for opts in l.split(' ') if opts != '']
+      for field in fields:
+        if field[0] == 'Dependency':
+          return field[1]
 
