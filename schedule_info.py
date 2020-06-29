@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+from enum import Enum
+
+
+class State(Enum):
+    BOOT_FAIL = 1
+    CANCELLED = 2
+    COMPLETED = 3
+    CONFIGURING = 4
+    COMPLETING = 5
+    DEADLINE = 6
+    FAILED = 7
+    NODE_FAIL = 8
+    OUT_OF_MEMORY = 9
+    PENDING = 10
+    PREEMPTED = 11
+    RUNNING = 12
+    RESV_DEL_HOLD = 13
+    REQUEUE_FED = 14
+    REQUEUE_HOLD = 15
+    REQUEUED = 16
+    RESIZING = 17
+    REVOKED = 18
+    SIGNALING = 19
+    SPECIAL_EXIT = 20
+    STAGE_OUT = 21
+    STOPPED = 22
+    SUSPENDED = 23
+    TIMEOUT = 24
+
