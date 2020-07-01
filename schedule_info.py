@@ -28,3 +28,15 @@ class State(Enum):
     SUSPENDED = 23
     TIMEOUT = 24
 
+
+class ScheduleInfo:
+    def __init__(self):
+        self.jobID
+        self.jobName
+        self.startTime
+        self.endTime
+        self.submitTime
+        self.numNodes
+        self.numCPUs
+        self.numTasks
+        self.exitCode
