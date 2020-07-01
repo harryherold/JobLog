@@ -46,3 +46,7 @@ class Job:
     def __init__(self, jobID, jobName, startTime, endTime, submitTime, numNodes, numCPUs, numTasks, exitCode):
         super().__init__(jobID, jobName, startTime, endTime, submitTime, numNodes, numCPUs, numTasks, exitCode)
         self.dependency
+
+    class Step:
+        def __init__(self):
+            self.nodeList
