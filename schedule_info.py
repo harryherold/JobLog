@@ -45,8 +45,23 @@ class ScheduleInfo:
 class Job:
     def __init__(self, jobID, jobName, startTime, endTime, submitTime, numNodes, numCPUs, numTasks, exitCode):
         super().__init__(jobID, jobName, startTime, endTime, submitTime, numNodes, numCPUs, numTasks, exitCode)
+        self.step = []
         self.dependency
+
+    def add_step(self, jobID, jobName, startTime, endTime, submitTime, numNodes, numCPUs, numTasks, exitCode, nodeList):
+        self.step.append(jobID)
+        self.step.append(jobName)
+        self.step.append(startTime)
+        self.step.append(endTime)
+        self.step.append(submitTime)
+        self.step.append(numNodes)
+        self.step.append(numCPUs)
+        self.step.append(numTasks)
+        self.step.append(exitCode)
+        self.step.append(nodeList)
+        self.steps.append(self.step)
 
     class Step:
         def __init__(self):
             self.nodeList
+            self.steps = []
